@@ -11,11 +11,11 @@ use Symfony\Component\Routing\Attribute\Route;
 final class HealthController extends AbstractController
 {
     /**
-     * Return a simple ok status for monitoring checks.
+     * Return a simple healthy status for monitoring checks.
      */
     #[Route('/api/health', methods: ['GET'])]
     public function check(): JsonResponse
     {
-        return new JsonResponse(['status' => 'ok']);
+        return new JsonResponse(['status' => 'healthy']);
     }
 }
