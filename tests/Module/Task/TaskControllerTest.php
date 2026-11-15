@@ -27,6 +27,7 @@ final class TaskControllerTest extends WebTestCase
                 'isDone' => false,
                 'createdAt' => '2026-02-04T10:00:00+00:00',
                 'parentId' => null,
+                'tags' => [],
                 'children' => [
                     [
                         'id' => 'task-05',
@@ -34,6 +35,7 @@ final class TaskControllerTest extends WebTestCase
                         'isDone' => false,
                         'createdAt' => '2026-02-05T10:00:00+00:00',
                         'parentId' => 'task-04',
+                        'tags' => [],
                         'children' => [],
                     ],
                     [
@@ -42,6 +44,7 @@ final class TaskControllerTest extends WebTestCase
                         'isDone' => false,
                         'createdAt' => '2026-02-06T10:00:00+00:00',
                         'parentId' => 'task-04',
+                        'tags' => [],
                         'children' => [],
                     ],
                 ],
@@ -213,6 +216,7 @@ final class TaskControllerTest extends WebTestCase
                 'isDone' => true,
                 'createdAt' => '2026-02-03T10:00:00+00:00',
                 'parentId' => 'task-01',
+                'tags' => [],
                 'children' => [],
             ],
             $task,
@@ -252,6 +256,7 @@ final class TaskControllerTest extends WebTestCase
                 'isDone' => true,
                 'createdAt' => '2026-02-02T10:00:00+00:00',
                 'parentId' => 'task-01',
+                'tags' => [],
                 'children' => [],
             ],
             $task,
@@ -265,6 +270,122 @@ final class TaskControllerTest extends WebTestCase
 
         self::assertResponseStatusCodeSame(404);
         self::assertResponseHeaderSame('content-type', 'application/json');
+        self::assertSame(['error' => 'Task not found'], json_decode((string) $client->getResponse()->getContent(), true));
+    }
+
+    public function testCreateTaskNormalizesTags(): void
+    {
+        $client = static::createClient();
+        $client->disableReboot();
+        $client->request(
+            'POST',
+            '/api/tasks',
+            [],
+            [],
+            ['CONTENT_TYPE' => 'application/json'],
+            json_encode(['title' => 'Tagged task', 'tags' => ['Urgent', ' billing ']], JSON_THROW_ON_ERROR),
+        );
+
+        self::assertResponseStatusCodeSame(201);
+        $task = json_decode((string) $client->getResponse()->getContent(), true);
+        self::assertSame('Tagged task', $task['title']);
+        self::assertSame(['urgent', 'billing'], $task['tags']);
+
+        $client->request('GET', '/api/tasks/' . $task['id']);
+        self::assertResponseIsSuccessful();
+        $fetched = json_decode((string) $client->getResponse()->getContent(), true);
+        self::assertSame(['urgent', 'billing'], $fetched['tags']);
+    }
+
+    public function testCreateTaskTooManyTagsIs422(): void
+    {
+        $client = static::createClient();
+        $client->request(
+            'POST',
+            '/api/tasks',
+            [],
+            [],
+            ['CONTENT_TYPE' => 'application/json'],
+            json_encode(['title' => 'x', 'tags' => ['a', 'b', 'c', 'd', 'e', 'f']], JSON_THROW_ON_ERROR),
+        );
+
+        self::assertResponseStatusCodeSame(422);
+        $body = json_decode((string) $client->getResponse()->getContent(), true);
+        self::assertIsString($body['error']);
+        self::assertNotSame('', $body['error']);
+    }
+
+    public function testCreateTaskEmptyTagIs422(): void
+    {
+        $client = static::createClient();
+        $client->request(
+            'POST',
+            '/api/tasks',
+            [],
+            [],
+            ['CONTENT_TYPE' => 'application/json'],
+            json_encode(['title' => 'x', 'tags' => ['']], JSON_THROW_ON_ERROR),
+        );
+
+        self::assertResponseStatusCodeSame(422);
+        $body = json_decode((string) $client->getResponse()->getContent(), true);
+        self::assertIsString($body['error']);
+        self::assertNotSame('', $body['error']);
+    }
+
+    public function testCreateTaskInternalSpaceTagIs422(): void
+    {
+        $client = static::createClient();
+        $client->request(
+            'POST',
+            '/api/tasks',
+            [],
+            [],
+            ['CONTENT_TYPE' => 'application/json'],
+            json_encode(['title' => 'x', 'tags' => ['has space']], JSON_THROW_ON_ERROR),
+        );
+
+        self::assertResponseStatusCodeSame(422);
+        $body = json_decode((string) $client->getResponse()->getContent(), true);
+        self::assertIsString($body['error']);
+        self::assertNotSame('', $body['error']);
+    }
+
+    public function testPatchTaskUpdatesTagsOnly(): void
+    {
+        $client = static::createClient();
+        $client->request('GET', '/api/tasks/task-04');
+        $before = json_decode((string) $client->getResponse()->getContent(), true);
+
+        $client->request(
+            'PATCH',
+            '/api/tasks/task-04',
+            [],
+            [],
+            ['CONTENT_TYPE' => 'application/json'],
+            json_encode(['tags' => [' Billing ', 'urgent']], JSON_THROW_ON_ERROR),
+        );
+
+        self::assertResponseIsSuccessful();
+        $after = json_decode((string) $client->getResponse()->getContent(), true);
+        self::assertSame(['billing', 'urgent'], $after['tags']);
+        self::assertSame($before['title'], $after['title']);
+        self::assertSame($before['isDone'], $after['isDone']);
+    }
+
+    public function testPatchUnknownTaskIs404(): void
+    {
+        $client = static::createClient();
+        $client->request(
+            'PATCH',
+            '/api/tasks/nope',
+            [],
+            [],
+            ['CONTENT_TYPE' => 'application/json'],
+            json_encode(['tags' => ['a']], JSON_THROW_ON_ERROR),
+        );
+
+        self::assertResponseStatusCodeSame(404);
         self::assertSame(['error' => 'Task not found'], json_decode((string) $client->getResponse()->getContent(), true));
     }
 }

@@ -8,15 +8,27 @@ final class Task
 {
     public ?string $parentId = null;
 
+    /** @var list<string> */
+    public array $tags = [];
+
     /** @var list<Task> */
     public array $children = [];
 
+    public readonly string $id;
+    public readonly \DateTimeImmutable $createdAt;
+    public string $title;
+    public bool $isDone;
+
     public function __construct(
-        public readonly string $id,
-        public readonly string $title,
-        public readonly bool $isDone,
-        public readonly \DateTimeImmutable $createdAt,
+        string $id,
+        string $title,
+        bool $isDone,
+        \DateTimeImmutable $createdAt,
     ) {
+        $this->id = $id;
+        $this->title = $title;
+        $this->isDone = $isDone;
+        $this->createdAt = $createdAt;
     }
 
     /**

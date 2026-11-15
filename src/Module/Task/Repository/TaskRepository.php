@@ -36,6 +36,8 @@ final class TaskRepository
     /** @var list<Task>|null */
     private ?array $tasks = null;
 
+    private int $nextIdCounter = 13;
+
     /** @return list<Task> */
     public function all(): array
     {
@@ -103,6 +105,17 @@ final class TaskRepository
         }
 
         return null;
+    }
+
+    public function nextId(): string
+    {
+        return sprintf('task-%02d', $this->nextIdCounter++);
+    }
+
+    public function add(Task $task): void
+    {
+        $this->all();
+        $this->tasks[] = $task;
     }
 
     /** @param list<Task> $tasks
