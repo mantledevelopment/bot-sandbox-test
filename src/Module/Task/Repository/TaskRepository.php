@@ -6,12 +6,17 @@ namespace App\Module\Task\Repository;
 
 use App\Module\Task\Domain\Page;
 use App\Module\Task\Domain\Task;
+use Symfony\Component\Clock\ClockInterface;
 
 /**
  * Fixed in-memory task list, so the sandbox needs no database.
  */
 final class TaskRepository
 {
+    public function __construct(private readonly ClockInterface $clock)
+    {
+    }
+
     private const TITLES = [
         'Plan the sprint',
         'Write the tests',
@@ -68,7 +73,7 @@ final class TaskRepository
         return $this->tasks;
     }
 
-    public function paginate(int $page, int $perPage, bool $done = false, string $sort = 'id', ?string $tag = null): Page
+    public function paginate(int $page, int $perPage, bool $done = false, string $sort = 'id', ?string $tag = null, ?bool $overdue = null): Page
     {
         $tasks = $this->all();
 
@@ -83,6 +88,15 @@ final class TaskRepository
             $tasks,
             static fn (Task $task): bool => $task->isDone === $done,
         ));
+
+        if (true === $overdue) {
+            $today = $this->clock->now()->format('Y-m-d');
+            $tasks = array_values(array_filter(
+                $tasks,
+                static fn (Task $task): bool => !$task->isDone && null !== $task->dueDate && $task->dueDate < $today,
+            ));
+        }
+
         $tasks = $this->sort($tasks, $sort);
         $offset = ($page - 1) * $perPage;
 
@@ -119,14 +133,16 @@ final class TaskRepository
         return $out;
     }
 
-    /** @return array{total: int, done: int} */
+    /** @return array{total: int, done: int, overdue: int} */
     public function count(): array
     {
         $tasks = $this->all();
+        $today = $this->clock->now()->format('Y-m-d');
 
         return [
             'total' => count($tasks),
             'done' => count(array_filter($tasks, static fn (Task $task): bool => $task->isDone)),
+            'overdue' => count(array_filter($tasks, static fn (Task $task): bool => !$task->isDone && null !== $task->dueDate && $task->dueDate < $today)),
         ];
     }
 
