@@ -66,7 +66,17 @@ final class TaskController extends AbstractController
             }
         }
 
-        return new JsonResponse(TaskView::page($this->tasks->paginate($page, $perPage, $done, $sort, $tag)));
+        $overdue = null;
+        $overdueParam = $request->query->get('overdue');
+        if (null !== $overdueParam && '' !== $overdueParam) {
+            $lower = strtolower((string) $overdueParam);
+            if ('true' !== $lower && 'false' !== $lower) {
+                return new JsonResponse(['error' => 'overdue must be true or false'], 400);
+            }
+            $overdue = 'true' === $lower;
+        }
+
+        return new JsonResponse(TaskView::page($this->tasks->paginate($page, $perPage, $done, $sort, $tag, $overdue)));
     }
 
     #[Route('/api/tags', methods: ['GET'])]

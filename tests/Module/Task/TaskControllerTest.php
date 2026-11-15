@@ -5,9 +5,12 @@ declare(strict_types=1);
 namespace App\Tests\Module\Task;
 
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
+use Symfony\Component\Clock\Test\ClockSensitiveTrait;
 
 final class TaskControllerTest extends WebTestCase
 {
+    use ClockSensitiveTrait;
+
     public function testListReturnsFirstPageByDefault(): void
     {
         $client = static::createClient();
@@ -147,7 +150,7 @@ final class TaskControllerTest extends WebTestCase
 
         self::assertResponseIsSuccessful();
         self::assertSame(
-            ['total' => 12, 'done' => 3],
+            ['total' => 12, 'done' => 3, 'overdue' => 0],
             json_decode((string) $client->getResponse()->getContent(), true),
         );
     }
@@ -681,5 +684,143 @@ final class TaskControllerTest extends WebTestCase
 
         self::assertResponseStatusCodeSame(404);
         self::assertSame(['error' => 'Task not found'], json_decode((string) $client->getResponse()->getContent(), true));
+    }
+
+    public function testListWithOverdueTrueReturnsOnlyOpenTasksDueBeforeToday(): void
+    {
+        static::mockTime(new \DateTimeImmutable('2026-12-15'));
+
+        $client = static::createClient();
+        $client->disableReboot();
+        $client->request(
+            'POST',
+            '/api/tasks',
+            [],
+            [],
+            ['CONTENT_TYPE' => 'application/json'],
+            json_encode(['title' => 'Past due open', 'dueDate' => '2026-12-10'], JSON_THROW_ON_ERROR),
+        );
+        self::assertResponseStatusCodeSame(201);
+        $client->request(
+            'POST',
+            '/api/tasks',
+            [],
+            [],
+            ['CONTENT_TYPE' => 'application/json'],
+            json_encode(['title' => 'Past due done', 'dueDate' => '2026-12-10', 'isDone' => true], JSON_THROW_ON_ERROR),
+        );
+        self::assertResponseStatusCodeSame(201);
+        $client->request(
+            'POST',
+            '/api/tasks',
+            [],
+            [],
+            ['CONTENT_TYPE' => 'application/json'],
+            json_encode(['title' => 'Future due open', 'dueDate' => '2026-12-20'], JSON_THROW_ON_ERROR),
+        );
+        self::assertResponseStatusCodeSame(201);
+
+        $client->request('GET', '/api/tasks?overdue=true');
+
+        self::assertResponseIsSuccessful();
+        $body = json_decode((string) $client->getResponse()->getContent(), true);
+
+        self::assertSame(1, $body['total']);
+        self::assertCount(1, $body['items']);
+        self::assertSame('Past due open', $body['items'][0]['title']);
+        self::assertFalse($body['items'][0]['isDone']);
+    }
+
+    public function testListWithOverdueTrueRespectsPagination(): void
+    {
+        static::mockTime(new \DateTimeImmutable('2026-12-15'));
+
+        $client = static::createClient();
+        $client->disableReboot();
+        for ($i = 1; $i <= 5; $i++) {
+            $client->request(
+                'POST',
+                '/api/tasks',
+                [],
+                [],
+                ['CONTENT_TYPE' => 'application/json'],
+                json_encode(['title' => sprintf('Overdue %d', $i), 'dueDate' => '2026-12-10'], JSON_THROW_ON_ERROR),
+            );
+            self::assertResponseStatusCodeSame(201);
+        }
+
+        $client->request('GET', '/api/tasks?overdue=true&page=2&perPage=2');
+
+        self::assertResponseIsSuccessful();
+        $body = json_decode((string) $client->getResponse()->getContent(), true);
+
+        self::assertSame(5, $body['total']);
+        self::assertSame(2, $body['page']);
+        self::assertSame(2, $body['perPage']);
+        self::assertCount(2, $body['items']);
+    }
+
+    public function testListWithOverdueFalseBehavesAsToday(): void
+    {
+        $client = static::createClient();
+        $client->request('GET', '/api/tasks?overdue=false');
+
+        self::assertResponseIsSuccessful();
+        $body = json_decode((string) $client->getResponse()->getContent(), true);
+
+        self::assertSame(9, $body['total']);
+        self::assertCount(9, $body['items']);
+    }
+
+    public function testListWithOverdueMaybeIs400(): void
+    {
+        $client = static::createClient();
+        $client->request('GET', '/api/tasks?overdue=maybe');
+
+        self::assertResponseStatusCodeSame(400);
+        self::assertSame(['error' => 'overdue must be true or false'], json_decode((string) $client->getResponse()->getContent(), true));
+    }
+
+    public function testCountIncludesOverdue(): void
+    {
+        static::mockTime(new \DateTimeImmutable('2026-12-15'));
+
+        $client = static::createClient();
+        $client->disableReboot();
+        $client->request(
+            'POST',
+            '/api/tasks',
+            [],
+            [],
+            ['CONTENT_TYPE' => 'application/json'],
+            json_encode(['title' => 'Past due open', 'dueDate' => '2026-12-10'], JSON_THROW_ON_ERROR),
+        );
+        self::assertResponseStatusCodeSame(201);
+        $client->request(
+            'POST',
+            '/api/tasks',
+            [],
+            [],
+            ['CONTENT_TYPE' => 'application/json'],
+            json_encode(['title' => 'Past due done', 'dueDate' => '2026-12-10', 'isDone' => true], JSON_THROW_ON_ERROR),
+        );
+        self::assertResponseStatusCodeSame(201);
+        $client->request(
+            'POST',
+            '/api/tasks',
+            [],
+            [],
+            ['CONTENT_TYPE' => 'application/json'],
+            json_encode(['title' => 'Past due open 2', 'dueDate' => '2026-12-01'], JSON_THROW_ON_ERROR),
+        );
+        self::assertResponseStatusCodeSame(201);
+
+        $client->request('GET', '/api/tasks/count');
+
+        self::assertResponseIsSuccessful();
+        self::assertSame(
+            ['total' => 15, 'done' => 4, 'overdue' => 2],
+            json_decode((string) $client->getResponse()->getContent(), true),
+        );
     }
 }
