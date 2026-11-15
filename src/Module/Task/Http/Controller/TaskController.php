@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Module\Task\Http\Controller;
 
+use App\Module\Task\Domain\DueDate;
 use App\Module\Task\Domain\Tags;
 use App\Module\Task\Domain\Task;
 use App\Module\Task\Http\View\TaskView;
@@ -105,6 +106,7 @@ final class TaskController extends AbstractController
             $isDone = $this->parseIsDone($payload);
             $tags = $payload['tags'] ?? [];
             $tags = Tags::normalize($tags);
+            $dueDate = DueDate::normalize($payload['dueDate'] ?? null);
         } catch (\InvalidArgumentException $e) {
             return new JsonResponse(['error' => $e->getMessage()], 422);
         }
@@ -116,6 +118,7 @@ final class TaskController extends AbstractController
             createdAt: new \DateTimeImmutable(),
         );
         $task->tags = $tags;
+        $task->dueDate = $dueDate;
         $this->tasks->add($task);
 
         return new JsonResponse(TaskView::one($task), 201);
@@ -144,6 +147,9 @@ final class TaskController extends AbstractController
             }
             if (array_key_exists('tags', $payload)) {
                 $task->tags = Tags::normalize($payload['tags']);
+            }
+            if (array_key_exists('dueDate', $payload)) {
+                $task->dueDate = DueDate::normalize($payload['dueDate']);
             }
         } catch (\InvalidArgumentException $e) {
             return new JsonResponse(['error' => $e->getMessage()], 422);
