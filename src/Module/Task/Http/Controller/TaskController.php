@@ -56,7 +56,22 @@ final class TaskController extends AbstractController
             $done = 'true' === $lower;
         }
 
-        return new JsonResponse(TaskView::page($this->tasks->paginate($page, $perPage, $done, $sort)));
+        $tag = null;
+        $tagParam = $request->query->get('tag');
+        if (null !== $tagParam) {
+            $tag = strtolower(trim((string) $tagParam));
+            if ('' === $tag) {
+                $tag = null;
+            }
+        }
+
+        return new JsonResponse(TaskView::page($this->tasks->paginate($page, $perPage, $done, $sort, $tag)));
+    }
+
+    #[Route('/api/tags', methods: ['GET'])]
+    public function tags(): JsonResponse
+    {
+        return new JsonResponse($this->tasks->tagCounts());
     }
 
     #[Route('/api/tasks/count', methods: ['GET'])]
