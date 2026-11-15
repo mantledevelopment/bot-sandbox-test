@@ -27,6 +27,7 @@ final class TaskControllerTest extends WebTestCase
                 'isDone' => false,
                 'createdAt' => '2026-02-04T10:00:00+00:00',
                 'parentId' => null,
+                'dueDate' => null,
                 'tags' => [],
                 'children' => [
                     [
@@ -35,6 +36,7 @@ final class TaskControllerTest extends WebTestCase
                         'isDone' => false,
                         'createdAt' => '2026-02-05T10:00:00+00:00',
                         'parentId' => 'task-04',
+                        'dueDate' => null,
                         'tags' => [],
                         'children' => [],
                     ],
@@ -44,6 +46,7 @@ final class TaskControllerTest extends WebTestCase
                         'isDone' => false,
                         'createdAt' => '2026-02-06T10:00:00+00:00',
                         'parentId' => 'task-04',
+                        'dueDate' => null,
                         'tags' => [],
                         'children' => [],
                     ],
@@ -216,6 +219,7 @@ final class TaskControllerTest extends WebTestCase
                 'isDone' => true,
                 'createdAt' => '2026-02-03T10:00:00+00:00',
                 'parentId' => 'task-01',
+                'dueDate' => null,
                 'tags' => [],
                 'children' => [],
             ],
@@ -256,6 +260,7 @@ final class TaskControllerTest extends WebTestCase
                 'isDone' => true,
                 'createdAt' => '2026-02-02T10:00:00+00:00',
                 'parentId' => 'task-01',
+                'dueDate' => null,
                 'tags' => [],
                 'children' => [],
             ],
@@ -545,6 +550,121 @@ final class TaskControllerTest extends WebTestCase
         $body = json_decode((string) $client->getResponse()->getContent(), true);
 
         self::assertSame([], $body);
+    }
+
+    public function testCreateTaskWithDueDateStoresAndReturnsIt(): void
+    {
+        $client = static::createClient();
+        $client->disableReboot();
+        $client->request(
+            'POST',
+            '/api/tasks',
+            [],
+            [],
+            ['CONTENT_TYPE' => 'application/json'],
+            json_encode(['title' => 'Due task', 'dueDate' => '2026-12-01'], JSON_THROW_ON_ERROR),
+        );
+
+        self::assertResponseStatusCodeSame(201);
+        $task = json_decode((string) $client->getResponse()->getContent(), true);
+        self::assertSame('2026-12-01', $task['dueDate']);
+
+        $client->request('GET', '/api/tasks/' . $task['id']);
+        self::assertResponseIsSuccessful();
+        $fetched = json_decode((string) $client->getResponse()->getContent(), true);
+        self::assertSame('2026-12-01', $fetched['dueDate']);
+    }
+
+    public function testCreateTaskWithInvalidCalendarDateIs422(): void
+    {
+        $client = static::createClient();
+        $client->request(
+            'POST',
+            '/api/tasks',
+            [],
+            [],
+            ['CONTENT_TYPE' => 'application/json'],
+            json_encode(['title' => 'x', 'dueDate' => '2026-02-30'], JSON_THROW_ON_ERROR),
+        );
+
+        self::assertResponseStatusCodeSame(422);
+        $body = json_decode((string) $client->getResponse()->getContent(), true);
+        self::assertIsString($body['error']);
+        self::assertNotSame('', $body['error']);
+    }
+
+    public function testCreateTaskWithNonDateStringIs422(): void
+    {
+        $client = static::createClient();
+        $client->request(
+            'POST',
+            '/api/tasks',
+            [],
+            [],
+            ['CONTENT_TYPE' => 'application/json'],
+            json_encode(['title' => 'x', 'dueDate' => 'tomorrow'], JSON_THROW_ON_ERROR),
+        );
+
+        self::assertResponseStatusCodeSame(422);
+        $body = json_decode((string) $client->getResponse()->getContent(), true);
+        self::assertIsString($body['error']);
+        self::assertNotSame('', $body['error']);
+    }
+
+    public function testPatchTaskWithNullDueDateClearsIt(): void
+    {
+        $client = static::createClient();
+        $client->disableReboot();
+        $client->request(
+            'POST',
+            '/api/tasks',
+            [],
+            [],
+            ['CONTENT_TYPE' => 'application/json'],
+            json_encode(['title' => 'Due task', 'dueDate' => '2026-12-01'], JSON_THROW_ON_ERROR),
+        );
+        self::assertResponseStatusCodeSame(201);
+        $task = json_decode((string) $client->getResponse()->getContent(), true);
+
+        $client->request(
+            'PATCH',
+            '/api/tasks/' . $task['id'],
+            [],
+            [],
+            ['CONTENT_TYPE' => 'application/json'],
+            json_encode(['dueDate' => null], JSON_THROW_ON_ERROR),
+        );
+
+        self::assertResponseIsSuccessful();
+        $after = json_decode((string) $client->getResponse()->getContent(), true);
+        self::assertNull($after['dueDate']);
+    }
+
+    public function testPatchTaskWithDueDateSetsIt(): void
+    {
+        $client = static::createClient();
+        $client->request(
+            'PATCH',
+            '/api/tasks/task-04',
+            [],
+            [],
+            ['CONTENT_TYPE' => 'application/json'],
+            json_encode(['dueDate' => '2026-11-20'], JSON_THROW_ON_ERROR),
+        );
+
+        self::assertResponseIsSuccessful();
+        $after = json_decode((string) $client->getResponse()->getContent(), true);
+        self::assertSame('2026-11-20', $after['dueDate']);
+    }
+
+    public function testGetPreExistingTaskReturnsNullDueDate(): void
+    {
+        $client = static::createClient();
+        $client->request('GET', '/api/tasks/task-04');
+
+        self::assertResponseIsSuccessful();
+        $task = json_decode((string) $client->getResponse()->getContent(), true);
+        self::assertNull($task['dueDate']);
     }
 
     public function testPatchUnknownTaskIs404(): void

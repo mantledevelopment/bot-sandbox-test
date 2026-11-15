@@ -7,6 +7,7 @@ namespace App\Module\Task\Domain;
 final class Task
 {
     public ?string $parentId = null;
+    public ?string $dueDate = null;
 
     /** @var list<string> */
     public array $tags = [];
