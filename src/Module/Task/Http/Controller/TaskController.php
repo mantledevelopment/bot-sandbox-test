@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Module\Task\Http\Controller;
 
+use App\Module\Task\Domain\Tags;
+use App\Module\Task\Domain\Task;
 use App\Module\Task\Http\View\TaskView;
 use App\Module\Task\Repository\TaskRepository;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -73,5 +75,89 @@ final class TaskController extends AbstractController
         }
 
         return new JsonResponse(TaskView::one($task));
+    }
+
+    #[Route('/api/tasks', methods: ['POST'])]
+    public function create(Request $request): JsonResponse
+    {
+        $payload = json_decode((string) $request->getContent(), true);
+        if (!is_array($payload)) {
+            return new JsonResponse(['error' => 'Request body must be a JSON object'], 400);
+        }
+
+        try {
+            $title = $this->requireTitle($payload);
+            $isDone = $this->parseIsDone($payload);
+            $tags = $payload['tags'] ?? [];
+            $tags = Tags::normalize($tags);
+        } catch (\InvalidArgumentException $e) {
+            return new JsonResponse(['error' => $e->getMessage()], 422);
+        }
+
+        $task = new Task(
+            id: $this->tasks->nextId(),
+            title: $title,
+            isDone: $isDone,
+            createdAt: new \DateTimeImmutable(),
+        );
+        $task->tags = $tags;
+        $this->tasks->add($task);
+
+        return new JsonResponse(TaskView::one($task), 201);
+    }
+
+    #[Route('/api/tasks/{id}', methods: ['PATCH'])]
+    public function update(string $id, Request $request): JsonResponse
+    {
+        $task = $this->tasks->find($id);
+
+        if (null === $task) {
+            return new JsonResponse(['error' => 'Task not found'], 404);
+        }
+
+        $payload = json_decode((string) $request->getContent(), true);
+        if (!is_array($payload)) {
+            return new JsonResponse(['error' => 'Request body must be a JSON object'], 400);
+        }
+
+        try {
+            if (array_key_exists('title', $payload)) {
+                $task->title = $this->requireTitle($payload);
+            }
+            if (array_key_exists('isDone', $payload)) {
+                $task->isDone = $this->parseIsDone($payload);
+            }
+            if (array_key_exists('tags', $payload)) {
+                $task->tags = Tags::normalize($payload['tags']);
+            }
+        } catch (\InvalidArgumentException $e) {
+            return new JsonResponse(['error' => $e->getMessage()], 422);
+        }
+
+        return new JsonResponse(TaskView::one($task));
+    }
+
+    private function requireTitle(array $payload): string
+    {
+        $title = $payload['title'] ?? null;
+        if (!is_string($title)) {
+            throw new \InvalidArgumentException('title must be a string');
+        }
+        $title = trim($title);
+        if ('' === $title) {
+            throw new \InvalidArgumentException('title cannot be empty');
+        }
+
+        return $title;
+    }
+
+    private function parseIsDone(array $payload): bool
+    {
+        $isDone = $payload['isDone'] ?? false;
+        if (!is_bool($isDone)) {
+            throw new \InvalidArgumentException('isDone must be a boolean');
+        }
+
+        return $isDone;
     }
 }

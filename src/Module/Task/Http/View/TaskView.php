@@ -9,7 +9,7 @@ use App\Module\Task\Domain\Task;
 
 final class TaskView
 {
-    /** @return array{id: string, title: string, isDone: bool, createdAt: string, parentId: string|null, children: list<array<string, mixed>>} */
+    /** @return array{id: string, title: string, isDone: bool, createdAt: string, parentId: string|null, tags: list<string>, children: list<array<string, mixed>>} */
     public static function one(Task $task): array
     {
         return [
@@ -18,6 +18,7 @@ final class TaskView
             'isDone' => $task->isDone,
             'createdAt' => $task->createdAt->format(\DATE_ATOM),
             'parentId' => $task->parentId,
+            'tags' => $task->tags,
             'children' => self::many($task->children),
         ];
     }
