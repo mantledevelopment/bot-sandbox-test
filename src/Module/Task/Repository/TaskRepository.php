@@ -68,10 +68,19 @@ final class TaskRepository
         return $this->tasks;
     }
 
-    public function paginate(int $page, int $perPage, bool $done = false, string $sort = 'id'): Page
+    public function paginate(int $page, int $perPage, bool $done = false, string $sort = 'id', ?string $tag = null): Page
     {
+        $tasks = $this->all();
+
+        if (null !== $tag) {
+            $tasks = array_values(array_filter(
+                $tasks,
+                static fn (Task $task): bool => in_array($tag, $task->tags, true),
+            ));
+        }
+
         $tasks = array_values(array_filter(
-            $this->all(),
+            $tasks,
             static fn (Task $task): bool => $task->isDone === $done,
         ));
         $tasks = $this->sort($tasks, $sort);
@@ -83,6 +92,31 @@ final class TaskRepository
             perPage: $perPage,
             total: count($tasks),
         );
+    }
+
+    /** @return list<array{tag: string, count: int}> */
+    public function tagCounts(): array
+    {
+        $all = [];
+        foreach ($this->all() as $task) {
+            foreach ($task->tags as $tag) {
+                $all[] = $tag;
+            }
+        }
+
+        $counts = array_count_values($all);
+        $out = [];
+        foreach ($counts as $tag => $count) {
+            $out[] = ['tag' => $tag, 'count' => $count];
+        }
+
+        usort($out, static function (array $a, array $b): int {
+            return $a['count'] === $b['count']
+                ? strcmp($a['tag'], $b['tag'])
+                : $b['count'] <=> $a['count'];
+        });
+
+        return $out;
     }
 
     /** @return array{total: int, done: int} */

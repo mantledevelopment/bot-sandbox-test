@@ -373,6 +373,180 @@ final class TaskControllerTest extends WebTestCase
         self::assertSame($before['isDone'], $after['isDone']);
     }
 
+    public function testListWithTagReturnsOnlyTaggedTasks(): void
+    {
+        $client = static::createClient();
+        $client->disableReboot();
+        $client->request(
+            'POST',
+            '/api/tasks',
+            [],
+            [],
+            ['CONTENT_TYPE' => 'application/json'],
+            json_encode(['title' => 'Billing task', 'tags' => ['billing']], JSON_THROW_ON_ERROR),
+        );
+        self::assertResponseStatusCodeSame(201);
+
+        $client->request('GET', '/api/tasks?tag=billing');
+
+        self::assertResponseIsSuccessful();
+        $body = json_decode((string) $client->getResponse()->getContent(), true);
+
+        self::assertSame(1, $body['total']);
+        self::assertCount(1, $body['items']);
+        self::assertSame('Billing task', $body['items'][0]['title']);
+        self::assertSame(['billing'], $body['items'][0]['tags']);
+    }
+
+    public function testListWithTagAndDoneTrueInterplay(): void
+    {
+        $client = static::createClient();
+        $client->disableReboot();
+        $client->request(
+            'POST',
+            '/api/tasks',
+            [],
+            [],
+            ['CONTENT_TYPE' => 'application/json'],
+            json_encode(['title' => 'Done billing', 'tags' => ['billing'], 'isDone' => true], JSON_THROW_ON_ERROR),
+        );
+        self::assertResponseStatusCodeSame(201);
+        $client->request(
+            'POST',
+            '/api/tasks',
+            [],
+            [],
+            ['CONTENT_TYPE' => 'application/json'],
+            json_encode(['title' => 'Open billing', 'tags' => ['billing'], 'isDone' => false], JSON_THROW_ON_ERROR),
+        );
+        self::assertResponseStatusCodeSame(201);
+
+        $client->request('GET', '/api/tasks?tag=billing&done=true');
+
+        self::assertResponseIsSuccessful();
+        $body = json_decode((string) $client->getResponse()->getContent(), true);
+
+        self::assertSame(1, $body['total']);
+        self::assertCount(1, $body['items']);
+        self::assertSame('Done billing', $body['items'][0]['title']);
+        self::assertTrue($body['items'][0]['isDone']);
+    }
+
+    public function testListWithEmptyTagIsNoFilter(): void
+    {
+        $client = static::createClient();
+        $client->request('GET', '/api/tasks?tag=');
+
+        self::assertResponseIsSuccessful();
+        $body = json_decode((string) $client->getResponse()->getContent(), true);
+
+        self::assertSame(9, $body['total']);
+        self::assertCount(9, $body['items']);
+    }
+
+    public function testListWithTagRespectsPagination(): void
+    {
+        $client = static::createClient();
+        $client->disableReboot();
+        for ($i = 1; $i <= 3; $i++) {
+            $client->request(
+                'POST',
+                '/api/tasks',
+                [],
+                [],
+                ['CONTENT_TYPE' => 'application/json'],
+                json_encode(['title' => sprintf('Billing %d', $i), 'tags' => ['billing']], JSON_THROW_ON_ERROR),
+            );
+            self::assertResponseStatusCodeSame(201);
+        }
+
+        $client->request('GET', '/api/tasks?tag=billing&page=2&perPage=2');
+
+        self::assertResponseIsSuccessful();
+        $body = json_decode((string) $client->getResponse()->getContent(), true);
+
+        self::assertSame(3, $body['total']);
+        self::assertSame(2, $body['page']);
+        self::assertSame(2, $body['perPage']);
+        self::assertCount(1, $body['items']);
+    }
+
+    public function testTagsReturnsCountsMostUsedFirst(): void
+    {
+        $client = static::createClient();
+        $client->disableReboot();
+        $client->request(
+            'POST',
+            '/api/tasks',
+            [],
+            [],
+            ['CONTENT_TYPE' => 'application/json'],
+            json_encode(['title' => 'A', 'tags' => ['billing', 'urgent']], JSON_THROW_ON_ERROR),
+        );
+        self::assertResponseStatusCodeSame(201);
+        $client->request(
+            'POST',
+            '/api/tasks',
+            [],
+            [],
+            ['CONTENT_TYPE' => 'application/json'],
+            json_encode(['title' => 'B', 'tags' => ['billing']], JSON_THROW_ON_ERROR),
+        );
+        self::assertResponseStatusCodeSame(201);
+
+        $client->request('GET', '/api/tags');
+
+        self::assertResponseIsSuccessful();
+        $body = json_decode((string) $client->getResponse()->getContent(), true);
+
+        self::assertSame(
+            [
+                ['tag' => 'billing', 'count' => 2],
+                ['tag' => 'urgent', 'count' => 1],
+            ],
+            $body,
+        );
+    }
+
+    public function testTagsTieBreakByTagAscending(): void
+    {
+        $client = static::createClient();
+        $client->disableReboot();
+        $client->request(
+            'POST',
+            '/api/tasks',
+            [],
+            [],
+            ['CONTENT_TYPE' => 'application/json'],
+            json_encode(['title' => 'A', 'tags' => ['zeta', 'alpha']], JSON_THROW_ON_ERROR),
+        );
+        self::assertResponseStatusCodeSame(201);
+
+        $client->request('GET', '/api/tags');
+
+        self::assertResponseIsSuccessful();
+        $body = json_decode((string) $client->getResponse()->getContent(), true);
+
+        self::assertSame(
+            [
+                ['tag' => 'alpha', 'count' => 1],
+                ['tag' => 'zeta', 'count' => 1],
+            ],
+            $body,
+        );
+    }
+
+    public function testTagsOmitsNeverUsedTags(): void
+    {
+        $client = static::createClient();
+        $client->request('GET', '/api/tags');
+
+        self::assertResponseIsSuccessful();
+        $body = json_decode((string) $client->getResponse()->getContent(), true);
+
+        self::assertSame([], $body);
+    }
+
     public function testPatchUnknownTaskIs404(): void
     {
         $client = static::createClient();
